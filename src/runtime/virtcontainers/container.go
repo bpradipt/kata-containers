@@ -529,6 +529,10 @@ func (c *Container) mountSharedDirMounts(ctx context.Context, sharedDirMounts, i
 		sharedDirMounts[sharedDirMount.Destination] = sharedDirMount
 	}
 
+	// Start the event loop to watch for file change notifications
+	// The event loop will only start if there are watches added
+	go c.sandbox.fsShare.StartFileEventWatcher(ctx)
+
 	return storages, nil
 }
 
