@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"time"
 
 	cri "github.com/containerd/containerd/pkg/cri/annotations"
 	"github.com/containerd/ttrpc"
+	"github.com/kata-containers/kata-containers/src/runtime/pkg/device/config"
 	persistapi "github.com/kata-containers/kata-containers/src/runtime/pkg/hypervisors"
 	pb "github.com/kata-containers/kata-containers/src/runtime/protocols/hypervisor"
 	"github.com/kata-containers/kata-containers/src/runtime/virtcontainers/types"
@@ -213,7 +215,13 @@ func (rh *remoteHypervisor) AddDevice(ctx context.Context, devInfo interface{}, 
 
 func (rh *remoteHypervisor) HotplugAddDevice(ctx context.Context, devInfo interface{}, devType DeviceType) (interface{}, error) {
 	logrus.Printf("HotplugAddDevice: devInfo=%#v", devInfo)
-	return "HotplugAddDevice is not implemented", nil
+	//return "HotplugAddDevice is not implemented", nil
+	data, err := rh.hotplugDevice(ctx, devInfo, devType, AddDevice)
+	if err != nil {
+		return data, err
+	}
+
+	return data, nil
 }
 
 func (rh *remoteHypervisor) HotplugRemoveDevice(ctx context.Context, devInfo interface{}, devType DeviceType) (interface{}, error) {
@@ -307,4 +315,31 @@ func (rh *remoteHypervisor) Load(persistapi.HypervisorState) {
 func (rh *remoteHypervisor) IsRateLimiterBuiltin() bool {
 	// TODO
 	return true
+}
+
+func (rh *remoteHypervisor) hotplugDevice(ctx context.Context, devInfo interface{}, devType DeviceType, op Operation) (interface{}, error) {
+	switch devType {
+	case BlockDev:
+		drive := devInfo.(*config.BlockDrive)
+		return nil, rh.hotplugBlockDevice(ctx, drive, op)
+	default:
+		return nil, fmt.Errorf("cannot hotplug device: unsupported device type '%v'", devType)
+	}
+}
+
+func (rh *remoteHypervisor) hotplugBlockDevice(ctx context.Context, drive *config.BlockDrive, op Operation) error {
+
+	// Print the drive info
+	logrus.Printf("hotplugBlockDevice: drive=%#v", drive)
+
+	// Spawn nbdkit to expose drive.File as a block device
+	nbdkitCmd := exec.Command(ctx, "nbdkit", drive.File)
+	nbdkitCmd.Stdout = os.Stdout
+	nbdkitCmd.Stderr = os.Stderr
+	if err := nbdkitCmd.Start(); err != nil {
+		//return errors.Wrapf(err, "failed to start nbdkit")
+		logrus.Printf("Failed to start nbdkit=%#v", err)
+	}
+
+	return nil
 }
