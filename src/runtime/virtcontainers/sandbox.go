@@ -497,6 +497,10 @@ func createSandbox(ctx context.Context, sandboxConfig SandboxConfig, factory Fac
 
 	s, err := newSandbox(ctx, sandboxConfig, factory)
 	if err != nil {
+		// Stop the file event watcher if it was started
+		if sandboxConfig.HypervisorConfig.SharedFS == config.NoSharedFS {
+			s.fsShare.StopFileEventWatcher(ctx)
+		}
 		return nil, err
 	}
 
@@ -612,6 +616,20 @@ func newSandbox(ctx context.Context, sandboxConfig SandboxConfig, factory Factor
 
 	if err := validateHypervisorConfig(&sandboxConfig.HypervisorConfig); err != nil {
 		return nil, err
+	}
+
+	// Start the event loop if not already started when fs sharing is not used
+	if sandboxConfig.HypervisorConfig.SharedFS == config.NoSharedFS {
+		// Start the StartFileEventWatcher method as a goroutine
+		// to monitor the file events.
+		go func() {
+			if err := s.fsShare.StartFileEventWatcher(ctx); err != nil {
+				s.Logger().WithError(err).Error("Failed to start file event watcher")
+				// Shutdown the go routine
+				s.fsShare.StopFileEventWatcher(ctx)
+				return
+			}
+		}()
 	}
 
 	// If we have a confidential guest we need to cold-plug the PCIe VFIO devices

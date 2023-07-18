@@ -15,7 +15,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
 	"sync"
 	"syscall"
 
@@ -34,10 +33,15 @@ func unmountNoFollow(path string) error {
 }
 
 type FilesystemShare struct {
-	sandbox            *Sandbox
-	watcher            *fsnotify.Watcher
-	srcDstMap          map[string]string
-	watcherDoneChannel chan bool
+	sandbox *Sandbox
+	watcher *fsnotify.Watcher
+	// The same volume mount can be shared by multiple containers in the same sandbox (pod)
+	srcDstMap            map[string][]string
+	srcDstMapLock        sync.Mutex
+	startOnce            sync.Once
+	eventLoopStarted     bool
+	eventLoopStartedLock sync.Mutex
+	watcherDoneChannel   chan bool
 	sync.Mutex
 	prepared bool
 }
@@ -52,7 +56,7 @@ func NewFilesystemShare(s *Sandbox) (FilesystemSharer, error) {
 		prepared:           false,
 		sandbox:            s,
 		watcherDoneChannel: make(chan bool),
-		srcDstMap:          make(map[string]string),
+		srcDstMap:          make(map[string][]string),
 		watcher:            watcher,
 	}, nil
 }
@@ -290,17 +294,27 @@ func (f *FilesystemShare) ShareFile(ctx context.Context, c *Container, m *Mount)
 			}
 
 			// Add fsNotify watcher for volume mounts
-			if strings.Contains(srcPath, "kubernetes.io~configmap") ||
-				strings.Contains(srcPath, "kubernetes.io~secrets") ||
-				strings.Contains(srcPath, "kubernetes.io~projected") ||
-				strings.Contains(srcPath, "kubernetes.io~downward-api") {
+			// Use regex for strict matching instead of strings.Contains
+			// match for kubernetes.io~configmap, kubernetes.io~secret, kubernetes.io~projected, kubernetes.io~downward-api
+			// as recommended in review comments for PR #7211
 
+			// Example directory structure for the volume mounts.
+			// /var/lib/kubelet/pods/f51ae853-557e-4ce1-b60b-a1101b555612/volumes/kubernetes.io~configmap
+			// /var/lib/kubelet/pods/f51ae853-557e-4ce1-b60b-a1101b555612/volumes/kubernetes.io~secret
+			// /var/lib/kubelet/pods/f51ae853-557e-4ce1-b60b-a1101b555612/volumes/kubernetes.io~projected
+			// /var/lib/kubelet/pods/f51ae853-557e-4ce1-b60b-a1101b555612/volumes/kubernetes.io~downward-api
+
+			// More relaxed regex for the pod UID
+			// `^/var/lib/kubelet/pods/[a-fA-F0-9\-]+/volumes/kubernetes\.io~(configmap|secret|projected|downward-api)`
+
+			regex := regexp.MustCompile(`^/var/lib/kubelet/pods/[a-fA-F0-9\-]{36}/volumes/kubernetes\.io~(configmap|secret|projected|downward-api)`)
+			if regex.MatchString(srcPath) {
 				// fsNotify doesn't add watcher recursively.
-				// So we need to add the watcher for directories under kubernetes.io~configmap, kubernetes.io~secrets,
+				// So we need to add the watcher for directories under kubernetes.io~configmap, kubernetes.io~secret,
 				// kubernetes.io~downward-api and kubernetes.io~projected
 				if info.Mode().IsDir() {
 					// The cm dir is of the form /var/lib/kubelet/pods/<uid>/volumes/kubernetes.io~configmap/foo/{..data, key1, key2,...}
-					// The secrets dir is of the form /var/lib/kubelet/pods/<uid>/volumes/kubernetes.io~secrets/foo/{..data, key1, key2,...}
+					// The secret dir is of the form /var/lib/kubelet/pods/<uid>/volumes/kubernetes.io~secret/foo/{..data, key1, key2,...}
 					// The projected dir is of the form /var/lib/kubelet/pods/<uid>/volumes/kubernetes.io~projected/foo/{..data, key1, key2,...}
 					// The downward-api dir is of the form /var/lib/kubelet/pods/<uid>/volumes/kubernetes.io~downward-api/foo/{..data, key1, key2,...}
 					f.Logger().Infof("ShareFile: srcPath(%s) is a directory", srcPath)
@@ -315,7 +329,10 @@ func (f *FilesystemShare) ShareFile(ctx context.Context, c *Container, m *Mount)
 				// Add the source and destination to the global map which will be used by the event loop
 				// to copy the modified content to the destination
 				f.Logger().Infof("ShareFile: Adding srcPath(%s) dstPath(%s) to srcDstMap", srcPath, dstPath)
-				f.srcDstMap[srcPath] = dstPath
+				// Lock the map before adding the entry
+				f.srcDstMapLock.Lock()
+				defer f.srcDstMapLock.Unlock()
+				f.srcDstMap[srcPath] = append(f.srcDstMap[srcPath], dstPath)
 
 			}
 
@@ -329,6 +346,7 @@ func (f *FilesystemShare) ShareFile(ctx context.Context, c *Container, m *Mount)
 		if ignored {
 			return nil, nil
 		}
+
 	} else {
 		// These mounts are created in the shared dir
 		mountDest := filepath.Join(getMountPath(f.sandbox.ID()), filename)
@@ -552,8 +570,8 @@ func (f *FilesystemShare) UnshareRootFilesystem(ctx context.Context, c *Containe
 
 func (f *FilesystemShare) watchDir(source string) error {
 
-	// Add a watcher for the configmap, secrets, projected-volumes and downwar-api directories
-	// /var/lib/kubelet/pods/<uid>/volumes/{kubernetes.io~configmap, kubernetes.io~secrets, kubernetes.io~downward-api, kubernetes.io~projected-volume}
+	// Add a watcher for the configmap, secret, projected-volumes and downwar-api directories
+	// /var/lib/kubelet/pods/<uid>/volumes/{kubernetes.io~configmap, kubernetes.io~secret, kubernetes.io~downward-api, kubernetes.io~projected-volume}
 
 	// Note: From fsNotify docs - https://pkg.go.dev/github.com/fsnotify/fsnotify
 	// Watching individual files (rather than directories) is generally not
@@ -589,17 +607,32 @@ func (f *FilesystemShare) watchDir(source string) error {
 
 func (f *FilesystemShare) StartFileEventWatcher(ctx context.Context) error {
 
-	// Start event loop if watchList is not empty
-	if (f.watcher == nil) || len(f.watcher.WatchList()) == 0 {
-		f.Logger().Info("StartFileEventWatcher: No watches found, returning")
+	// Aquire lock and check if eventLoopStarted
+	// If not started set the event loop started flag
+	f.eventLoopStartedLock.Lock()
+
+	// Check if the event loop is already started
+	if f.eventLoopStarted {
+		f.Logger().Info("StartFileEventWatcher: Event loop already started, returning")
+		f.eventLoopStartedLock.Unlock()
 		return nil
 	}
+
+	f.Logger().Infof("StartFileEventWatcher: starting the event loop")
+
+	f.eventLoopStarted = true
+	f.eventLoopStartedLock.Unlock()
+
 	// Regex for the temp directory with timestamp that is used to handle the updates by K8s
-	var re = regexp.MustCompile(`(?m)\s*[0-9]{4}_[0-9]{2}_[0-9]{2}_[0-9]{2}_[0-9]{2}_[0-9]{2}.[0-9]{10}$`)
+	// Examples
+	// /var/lib/kubelet/pods/e33907eb-54c7-4113-a3dc-447f247084cc/volumes/kubernetes.io~secret/foosecret/..2023_07_27_07_13_00.1257228
+	// /var/lib/kubelet/pods/e33907eb-54c7-4113-a3dc-447f247084cc/volumes/kubernetes.io~downward-api/fooinfo/..2023_07_27_07_13_00.3704578339
+	// The timestamp is of the format 2023_07_27_07_13_00.3704578339 or 2023_07_27_07_13_00.1257228
+
+	var re = regexp.MustCompile(`(?m)\s*[0-9]{4}_[0-9]{2}_[0-9]{2}_[0-9]{2}_[0-9]{2}_[0-9]{2}.[0-9]*$`)
 
 	f.Logger().Debugf("StartFileEventWatcher: srcDstMap dump %v", f.srcDstMap)
 
-	// This is the event loop to watch for fsNotify events and copy the contents to the guest
 	for {
 		select {
 		case event, ok := <-f.watcher.Events:
@@ -608,7 +641,7 @@ func (f *FilesystemShare) StartFileEventWatcher(ctx context.Context) error {
 			}
 			f.Logger().Infof("StartFileEventWatcher: got an event %s %s", event.Op, event.Name)
 			if event.Op&fsnotify.Remove == fsnotify.Remove {
-				// Ref: (kubernetes) pkg/volume/util/atomic_writer.go to understand the configmap/secrets update algo
+				// Ref: (kubernetes) pkg/volume/util/atomic_writer.go to understand the configmap/secret update algo
 				//
 				// Write does an atomic projection of the given payload into the writer's target
 				// directory.  Input paths must not begin with '..'.
@@ -666,13 +699,19 @@ func (f *FilesystemShare) StartFileEventWatcher(ctx context.Context) error {
 					f.Logger().Infof("StartFileEventWatcher: dataDir (%s)", dataDir)
 					// eg. dataDir = /var/lib/kubelet/pods/b44e3261-7cf0-48d3-83b4-6094bba95dc8/volumes/kubernetes.io~configmap/foo/..data
 
-					destination := f.srcDstMap[dataDir]
-					f.Logger().Infof("StartFileEventWatcher: Copy file from src (%s) to dst (%s)", dataDir, destination)
-					err := f.copyFilesFromDataDir(dataDir, destination)
-					if err != nil {
-						f.Logger().Infof("StartFileEventWatcher: got an error (%v) when copying file from src (%s) to dst (%s)", err, dataDir, destination)
-						return err
+					// Handle different destination for the same source
+					// Acquire srcDstMapLock before reading srcDstMap
+					f.srcDstMapLock.Lock()
+					for _, destination := range f.srcDstMap[dataDir] {
+						f.Logger().Infof("StartFileEventWatcher: Copy file from src (%s) to dst (%s)", dataDir, destination)
+						err := f.copyFilesFromDataDir(dataDir, destination)
+						if err != nil {
+							f.Logger().Infof("StartFileEventWatcher: got an error (%v) when copying file from src (%s) to dst (%s)", err, dataDir, destination)
+							f.srcDstMapLock.Unlock()
+							return err
+						}
 					}
+					f.srcDstMapLock.Unlock()
 				}
 			}
 		case err, ok := <-f.watcher.Errors:
