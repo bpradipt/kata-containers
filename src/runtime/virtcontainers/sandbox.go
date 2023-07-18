@@ -614,6 +614,18 @@ func newSandbox(ctx context.Context, sandboxConfig SandboxConfig, factory Factor
 		return nil, err
 	}
 
+	// Start the event loop if not already started when fs sharing is not used
+	if sandboxConfig.HypervisorConfig.SharedFS == config.NoSharedFS {
+		// Start the StartFileEventWatcher method as a goroutine
+		// to monitor the file events.
+		go func() {
+			if err := s.fsShare.StartFileEventWatcher(ctx); err != nil {
+				s.Logger().WithError(err).Error("Failed to start file event watcher")
+				return
+			}
+		}()
+	}
+
 	coldPlugVFIO, err := s.coldOrHotPlugVFIO(&sandboxConfig)
 	if err != nil {
 		return nil, err

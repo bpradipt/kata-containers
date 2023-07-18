@@ -433,12 +433,6 @@ func (c *Container) mountSharedDirMounts(ctx context.Context, sharedDirMounts, i
 				c.sandbox.devManager.DetachDevice(ctx, id, c.sandbox)
 			}
 		}
-
-		// Start the event loop to watch for file change notifications
-		// The event loop will only start if there are watches added
-		if c.sandbox.fsShare != nil {
-			go c.sandbox.fsShare.StartFileEventWatcher(ctx)
-		}
 	}()
 
 	for idx, m := range c.mounts {

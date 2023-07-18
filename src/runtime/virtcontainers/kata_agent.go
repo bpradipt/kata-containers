@@ -1208,6 +1208,7 @@ func (k *kataAgent) rollbackFailingContainerCreation(ctx context.Context, c *Con
 	}
 }
 
+// bpradipt: This function is called to create a container
 func (k *kataAgent) createContainer(ctx context.Context, sandbox *Sandbox, c *Container) (p *Process, err error) {
 	span, ctx := katatrace.Trace(ctx, k.Logger(), "createContainer", kataAgentTracingTags)
 	defer span.End()
