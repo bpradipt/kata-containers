@@ -289,10 +289,10 @@ const (
 	// Overrides the runtime.vfio_mode parameter in the global configuration.toml
 	VfioMode = kataAnnotRuntimePrefix + "vfio_mode"
 
-	// ImageRequestTimeout is a sandbox annotaion that sets the image pull timeout in the guest.
+	// ImageRequestTimeout is a sandbox annotation that sets the image pull timeout in the guest.
 	ImageRequestTimeout = kataAnnotRuntimePrefix + "image_request_timeout"
 
-	// SealedSecretEnabled is a sandbox annotaion that enables the sealed secret feature.
+	// SealedSecretEnabled is a sandbox annotation that enables the sealed secret feature.
 	SealedSecretEnabled = kataAnnotRuntimePrefix + "sealed_secret_enabled"
 )
 
