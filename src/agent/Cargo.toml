@@ -76,7 +76,7 @@ strum = "0.26.2"
 strum_macros = "0.26.2"
 
 # Image pull/decrypt
-image-rs = { git = "https://github.com/confidential-containers/guest-components", rev = "2c5ac6b01aafcb0be3875f5743c77d654a548146", default-features = false, optional = true }
+image-rs = { git = "https://github.com/bpradipt/guest-components", rev = "83ef3ec3eee66a183e5df0dc57b198557c8e10cd", default-features = false, optional = true }
 
 # Agent Policy
 regorus = { version = "0.1.4", default-features = false, features = [
