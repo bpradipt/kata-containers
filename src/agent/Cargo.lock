@@ -2814,6 +2814,7 @@ dependencies = [
  "slog-term",
  "strum",
  "strum_macros",
+ "sysinfo 0.28.4",
  "tempfile",
  "test-utils",
  "thiserror",
@@ -2876,7 +2877,7 @@ dependencies = [
  "serde_json",
  "slog",
  "slog-scope",
- "sysinfo",
+ "sysinfo 0.30.13",
  "thiserror",
  "toml",
 ]
@@ -5720,6 +5721,21 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.71",
+]
+
+[[package]]
+name = "sysinfo"
+version = "0.28.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4c2f3ca6693feb29a89724516f016488e9aafc7f37264f898593ee4b942f31b"
+dependencies = [
+ "cfg-if 1.0.0",
+ "core-foundation-sys",
+ "libc",
+ "ntapi",
+ "once_cell",
+ "rayon",
+ "winapi",
 ]
 
 [[package]]

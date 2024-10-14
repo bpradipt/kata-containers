@@ -28,6 +28,7 @@ kata-sys-util = { path = "../libs/kata-sys-util" }
 kata-types = { path = "../libs/kata-types" }
 safe-path = { path = "../libs/safe-path" }
 const_format = "0.2.30"
+sysinfo = "0.28.2"
 
 # Async helpers
 async-trait = "0.1.42"

@@ -36,6 +36,8 @@ use std::process::exit;
 use std::process::Command;
 use std::sync::Arc;
 use tracing::{instrument, span};
+use sysinfo::{System, SystemExt, ProcessExt};
+
 
 mod cdh;
 mod config;
@@ -553,10 +555,28 @@ fn launch_process(
     if !Path::new(path).exists() {
         return Err(anyhow!("path {} does not exist.", path));
     }
+
+    // Check if the process is already running
+    let mut system = System::new_all();
+    system.refresh_processes();
+    let process_name = Path::new(path).file_name().unwrap().to_str().unwrap();
+    let is_running = system.processes().values().any(|p| p.name() == process_name);
+
+    // Log the path and the process_name
+    info!(logger, "Launching process"; "path" => path, "process_name" => process_name);
+
+    if is_running {
+        info!(logger, "Process {} is already running. Skipping launch.", process_name);
+        return Ok(());
+    }
+
+    // If the process is not running, proceed with launching it
     if !unix_socket_path.is_empty() && Path::new(unix_socket_path).exists() {
         fs::remove_file(unix_socket_path)?;
     }
+    
     Command::new(path).args(args).spawn()?;
+    
     if !unix_socket_path.is_empty() && timeout_secs > 0 {
         wait_for_path_to_exist(logger, unix_socket_path, timeout_secs)?;
     }
