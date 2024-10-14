@@ -36,7 +36,6 @@ use std::process::exit;
 use std::process::Command;
 use std::sync::Arc;
 use tracing::{instrument, span};
-use sysinfo::{System, SystemExt, ProcessExt};
 
 
 mod cdh;
@@ -545,6 +544,29 @@ fn wait_for_path_to_exist(logger: &Logger, path: &str, timeout_secs: i32) -> Res
     Err(anyhow!("wait for {} to exist timeout.", path))
 }
 
+fn is_systemd_service_enabled(logger: &Logger, path: &str) -> Result<bool> {
+    let process_name = Path::new(path).file_name().unwrap().to_str().unwrap();
+    let service_name = format!("{}.service", process_name);
+
+    // Check if the systemd service is enabled
+    let status = Command::new("systemctl")
+        .args(&["is-enabled", &service_name])
+        .output()?;
+
+    let is_enabled = status.status.success();
+
+    // Log the path and the service_name
+    info!(logger, "Checking service"; "path" => path, "service_name" => &service_name);
+
+    if is_enabled {
+        info!(logger, "Service {} is enabled.", service_name);
+    } else {
+        info!(logger, "Service {} is not enabled.", service_name);
+    }
+
+    Ok(is_enabled)
+}
+
 fn launch_process(
     logger: &Logger,
     path: &str,
@@ -556,21 +578,16 @@ fn launch_process(
         return Err(anyhow!("path {} does not exist.", path));
     }
 
-    // Check if the process is already running
-    let mut system = System::new_all();
-    system.refresh_processes();
-    let process_name = Path::new(path).file_name().unwrap().to_str().unwrap();
-    let is_running = system.processes().values().any(|p| p.name() == process_name);
-
-    // Log the path and the process_name
-    info!(logger, "Launching process"; "path" => path, "process_name" => process_name);
-
-    if is_running {
-        info!(logger, "Process {} is already running. Skipping launch.", process_name);
+    // Check if the systemd service is enabled
+    if is_systemd_service_enabled(logger, path)? {
+        info!(logger, "Skipping launch for the process: {} as it's enabled via systemd", path);
+        if !unix_socket_path.is_empty() && timeout_secs > 0 {
+            wait_for_path_to_exist(logger, unix_socket_path, timeout_secs)?;
+        }
         return Ok(());
     }
 
-    // If the process is not running, proceed with launching it
+    // If the service is not enabled, proceed with launching it
     if !unix_socket_path.is_empty() && Path::new(unix_socket_path).exists() {
         fs::remove_file(unix_socket_path)?;
     }
