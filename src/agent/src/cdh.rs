@@ -95,11 +95,15 @@ pub async fn unseal_env(env: &str) -> Result<String> {
         .get()
         .expect("Confidential Data Hub not initialized");
 
+    
+
     if let Some((key, value)) = env.split_once('=') {
         if value.starts_with(SEALED_SECRET_PREFIX) {
             let unsealed_value = cdh_client.unseal_secret_async(value).await?;
             let unsealed_env = format!("{}={}", key, std::str::from_utf8(&unsealed_value)?);
 
+            println!("Unsealed value {:?} and env {:?}", unsealed_value, unsealed_env);
+            
             return Ok(unsealed_env);
         }
     }
