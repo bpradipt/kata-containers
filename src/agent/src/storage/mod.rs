@@ -27,6 +27,7 @@ use self::fs_handler::{OverlayfsHandler, Virtio9pHandler, VirtioFsHandler};
 #[cfg(feature = "guest-pull")]
 use self::image_pull_handler::ImagePullHandler;
 use self::local_handler::LocalHandler;
+use self::nbd_handler::NBDHandler;
 use crate::mount::{baremount, is_mounted, remove_mounts};
 use crate::sandbox::Sandbox;
 
@@ -39,6 +40,7 @@ mod fs_handler;
 #[cfg(feature = "guest-pull")]
 mod image_pull_handler;
 mod local_handler;
+mod nbd_handler;
 
 const RW_MASK: u32 = 0o660;
 const RO_MASK: u32 = 0o440;
@@ -141,6 +143,7 @@ lazy_static! {
             Arc::new(VirtioBlkPciHandler {}),
             Arc::new(EphemeralHandler {}),
             Arc::new(LocalHandler {}),
+            Arc::new(NBDHandler {}),
             Arc::new(PmemHandler {}),
             Arc::new(OverlayfsHandler {}),
             Arc::new(ScsiHandler {}),

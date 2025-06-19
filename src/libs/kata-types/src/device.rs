@@ -15,6 +15,8 @@ pub const DRIVER_BLK_MMIO_TYPE: &str = "mmioblk";
 pub const DRIVER_SCSI_TYPE: &str = "scsi";
 /// DRIVER_NVDIMM_TYPE is the device driver for nvdimm
 pub const DRIVER_NVDIMM_TYPE: &str = "nvdimm";
+/// DRIVER_NBD_TYPE is the device driver for NBD
+pub const DRIVER_NBD_TYPE: &str = "nbd";
 /// DRIVER_VFIO_PCI_GK_TYPE is the device driver for vfio-pci
 /// while the device will be bound to a guest kernel driver
 pub const DRIVER_VFIO_PCI_GK_TYPE: &str = "vfio-pci-gk";

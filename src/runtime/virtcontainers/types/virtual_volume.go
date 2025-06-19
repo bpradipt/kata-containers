@@ -24,6 +24,7 @@ const (
 	KataVirtualVolumeImageNydusFsType    = "image_nydus_fs"
 	KataVirtualVolumeLayerNydusFsType    = "layer_nydus_fs"
 	KataVirtualVolumeImageGuestPullType  = "image_guest_pull"
+	KataVirtualVolumeNBDType             = "nbd"
 )
 
 // DmVerityInfo contains configuration information for DmVerity device.
@@ -46,6 +47,24 @@ type ImagePullVolume struct {
 	Metadata map[string]string `json:"metadata"`
 }
 
+// NBDVolume contains NBD server information for remote hypervisor scenarios.
+type NBDVolume struct {
+	// Server is the NBD server address
+	Server string `json:"server"`
+
+	// Port is the NBD server port
+	Port int `json:"port"`
+
+	// ExportName is the NBD export name
+	ExportName string `json:"export_name"`
+
+	// ServerPID is the NBD server process ID (for cleanup)
+	ServerPID int `json:"server_pid,omitempty"`
+
+	// LocalPath is the local block device path that NBD server exports
+	LocalPath string `json:"local_path"`
+}
+
 // NydusImageVolume contains Nydus image volume information.
 type NydusImageVolume struct {
 	Config      string `json:"config"`
@@ -61,6 +80,7 @@ type KataVirtualVolume struct {
 	DirectVolume *DirectAssignedVolume `json:"direct_volume,omitempty"`
 	ImagePull    *ImagePullVolume      `json:"image_pull,omitempty"`
 	NydusImage   *NydusImageVolume     `json:"nydus_image,omitempty"`
+	NBD          *NBDVolume            `json:"nbd,omitempty"`
 	DmVerity     *DmVerityInfo         `json:"dm_verity,omitempty"`
 }
 
@@ -97,11 +117,16 @@ func (n *NydusImageVolume) IsValid() bool {
 	return len(n.Config) > 0 || len(n.SnapshotDir) > 0
 }
 
+func (n *NBDVolume) IsValid() bool {
+	return len(n.Server) > 0 && n.Port > 0 && len(n.LocalPath) > 0
+}
+
 func (k *KataVirtualVolume) IsValid() bool {
 	return len(k.VolumeType) > 0 &&
 		(k.DirectVolume == nil || k.DirectVolume.IsValid()) &&
 		(k.ImagePull == nil || k.ImagePull.IsValid()) &&
 		(k.NydusImage == nil || k.NydusImage.IsValid()) &&
+		(k.NBD == nil || k.NBD.IsValid()) &&
 		(k.DmVerity == nil || k.DmVerity.IsValid() == nil)
 }
 

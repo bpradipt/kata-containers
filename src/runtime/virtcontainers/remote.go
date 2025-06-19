@@ -8,12 +8,16 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 
 	cri "github.com/containerd/containerd/pkg/cri/annotations"
 	"github.com/containerd/ttrpc"
 	persistapi "github.com/kata-containers/kata-containers/src/runtime/pkg/hypervisors"
+	"github.com/kata-containers/kata-containers/src/runtime/pkg/device/config"
 	pb "github.com/kata-containers/kata-containers/src/runtime/protocols/hypervisor"
 	hypannotations "github.com/kata-containers/kata-containers/src/runtime/virtcontainers/pkg/annotations"
 	"github.com/kata-containers/kata-containers/src/runtime/virtcontainers/types"
@@ -21,6 +25,13 @@ import (
 )
 
 const defaultMinTimeout = 60
+
+// NBD server configuration and state
+var (
+	nbdServerMutex sync.Mutex
+	nbdPortCounter = 10809 // Starting port for NBD servers
+	nbdServers     = make(map[string]*types.NBDVolume)
+)
 
 type remoteHypervisor struct {
 	sandboxID       remoteHypervisorSandboxID
@@ -207,12 +218,175 @@ func (rh *remoteHypervisor) AddDevice(ctx context.Context, devInfo interface{}, 
 	return nil
 }
 
+// startNBDServer starts an NBD server for the given block device
+func (rh *remoteHypervisor) startNBDServer(blockDrive *config.BlockDrive) (*types.NBDVolume, error) {
+	nbdServerMutex.Lock()
+	defer nbdServerMutex.Unlock()
+
+	// Get next available port
+	port := nbdPortCounter
+	nbdPortCounter++
+
+	// Create NBD export name from device ID
+	exportName := fmt.Sprintf("export_%s", blockDrive.ID)
+
+	// Start nbdkit server
+	cmd := exec.Command("nbdkit", 
+		"--foreground",
+		"--newstyle", 
+		"--exportname", exportName,
+		"--port", strconv.Itoa(port),
+		"file", blockDrive.File)
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start NBD server: %v", err)
+	}
+
+	nbdVolume := &types.NBDVolume{
+		Server:     "localhost",
+		Port:       port,
+		ExportName: exportName,
+		ServerPID:  cmd.Process.Pid,
+		LocalPath:  blockDrive.File,
+	}
+
+	// Store NBD server info for cleanup
+	nbdServers[blockDrive.ID] = nbdVolume
+
+	hvLogger.WithField("nbd-server", fmt.Sprintf("localhost:%d", port)).
+		WithField("export", exportName).
+		WithField("local-path", blockDrive.File).
+		Info("Started NBD server for block device")
+
+	return nbdVolume, nil
+}
+
+// stopNBDServer stops the NBD server for the given device ID
+func (rh *remoteHypervisor) stopNBDServer(deviceID string) error {
+	nbdServerMutex.Lock()
+	defer nbdServerMutex.Unlock()
+
+	nbdVolume, exists := nbdServers[deviceID]
+	if !exists {
+		return fmt.Errorf("NBD server not found for device %s", deviceID)
+	}
+
+	// Kill the NBD server process
+	if nbdVolume.ServerPID > 0 {
+		if process, err := os.FindProcess(nbdVolume.ServerPID); err == nil {
+			if err := process.Kill(); err != nil {
+				hvLogger.WithError(err).WithField("pid", nbdVolume.ServerPID).
+					Warn("Failed to kill NBD server process")
+			}
+		}
+	}
+
+	delete(nbdServers, deviceID)
+	
+	hvLogger.WithField("device-id", deviceID).
+		WithField("nbd-server", fmt.Sprintf("%s:%d", nbdVolume.Server, nbdVolume.Port)).
+		Info("Stopped NBD server for block device")
+	
+	return nil
+}
+
+// createNBDExportPath creates the well-defined path for NBD export info
+func (rh *remoteHypervisor) createNBDExportPath(nbdVolume *types.NBDVolume, deviceID string) error {
+	exportDir := filepath.Join("/run/kata-containers", string(rh.sandboxID), "nbd-exports")
+	if err := os.MkdirAll(exportDir, 0755); err != nil {
+		return fmt.Errorf("failed to create NBD export directory: %v", err)
+	}
+
+	exportFile := filepath.Join(exportDir, fmt.Sprintf("%s.json", deviceID))
+	exportData := fmt.Sprintf(`{
+		"server": "%s",
+		"port": %d,
+		"export_name": "%s",
+		"nbd_uri": "nbd://%s:%d/%s"
+	}`, nbdVolume.Server, nbdVolume.Port, nbdVolume.ExportName, 
+		nbdVolume.Server, nbdVolume.Port, nbdVolume.ExportName)
+
+	if err := os.WriteFile(exportFile, []byte(exportData), 0644); err != nil {
+		return fmt.Errorf("failed to write NBD export info: %v", err)
+	}
+
+	hvLogger.WithField("export-file", exportFile).
+		Info("Created NBD export info file")
+
+	return nil
+}
+
 func (rh *remoteHypervisor) HotplugAddDevice(ctx context.Context, devInfo interface{}, devType DeviceType) (interface{}, error) {
-	return nil, notImplemented("HotplugAddDevice")
+	switch devType {
+	case BlockDev:
+		blockDrive, ok := devInfo.(*config.BlockDrive)
+		if !ok {
+			return nil, fmt.Errorf("device type mismatch, expect *config.BlockDrive for BlockDev")
+		}
+
+		hvLogger.WithField("block-drive", blockDrive).
+			Info("Hotplugging block device for remote hypervisor")
+
+		// Start NBD server for the block device
+		nbdVolume, err := rh.startNBDServer(blockDrive)
+		if err != nil {
+			return nil, fmt.Errorf("failed to start NBD server for block device %s: %v", blockDrive.ID, err)
+		}
+
+		// Create well-defined path for NBD export info
+		if err := rh.createNBDExportPath(nbdVolume, blockDrive.ID); err != nil {
+			// Clean up NBD server if export path creation fails
+			rh.stopNBDServer(blockDrive.ID)
+			return nil, fmt.Errorf("failed to create NBD export path: %v", err)
+		}
+
+		// Create KataVirtualVolume with NBD info
+		kataVolume := &types.KataVirtualVolume{
+			VolumeType: types.KataVirtualVolumeNBDType,
+			Source:     fmt.Sprintf("nbd://%s:%d/%s", nbdVolume.Server, nbdVolume.Port, nbdVolume.ExportName),
+			NBD:        nbdVolume,
+		}
+
+		hvLogger.WithField("kata-volume", kataVolume).
+			Info("Created KataVirtualVolume with NBD info")
+
+		return kataVolume, nil
+
+	default:
+		return nil, fmt.Errorf("device type %v not supported by remote hypervisor", devType)
+	}
 }
 
 func (rh *remoteHypervisor) HotplugRemoveDevice(ctx context.Context, devInfo interface{}, devType DeviceType) (interface{}, error) {
-	return nil, notImplemented("HotplugRemoveDevice")
+	switch devType {
+	case BlockDev:
+		blockDrive, ok := devInfo.(*config.BlockDrive)
+		if !ok {
+			return nil, fmt.Errorf("device type mismatch, expect *config.BlockDrive for BlockDev")
+		}
+
+		hvLogger.WithField("device-id", blockDrive.ID).
+			Info("Removing block device from remote hypervisor")
+
+		// Stop NBD server
+		if err := rh.stopNBDServer(blockDrive.ID); err != nil {
+			hvLogger.WithError(err).WithField("device-id", blockDrive.ID).
+				Warn("Failed to stop NBD server during device removal")
+		}
+
+		// Clean up export info file
+		exportDir := filepath.Join("/run/kata-containers", string(rh.sandboxID), "nbd-exports")
+		exportFile := filepath.Join(exportDir, fmt.Sprintf("%s.json", blockDrive.ID))
+		if err := os.Remove(exportFile); err != nil {
+			hvLogger.WithError(err).WithField("export-file", exportFile).
+				Warn("Failed to remove NBD export info file")
+		}
+
+		return nil, nil
+
+	default:
+		return nil, fmt.Errorf("device type %v not supported by remote hypervisor", devType)
+	}
 }
 
 func (rh *remoteHypervisor) ResizeMemory(ctx context.Context, memMB uint32, memoryBlockSizeMB uint32, probe bool) (uint32, MemoryDevice, error) {

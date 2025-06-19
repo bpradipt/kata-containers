@@ -30,6 +30,9 @@ const (
 	// DeviceBlock is the block device type
 	DeviceBlock DeviceType = "block"
 
+	// DeviceNBD is the NBD device type
+	DeviceNBD DeviceType = "nbd"
+
 	// DeviceGeneric is a generic device type
 	DeviceGeneric DeviceType = "generic"
 
@@ -61,6 +64,9 @@ const (
 
 	// Nvdimm means use nvdimm for hotplugging drives
 	Nvdimm = "nvdimm"
+
+	// NbdVolume means use NBD for remote hypervisor block devices
+	NbdVolume = "nbd-volume"
 )
 
 const (

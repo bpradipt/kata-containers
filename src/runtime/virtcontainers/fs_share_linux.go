@@ -519,6 +519,11 @@ func handleVirtualVolume(c *Container) ([]*grpc.Storage, string, error) {
 				if err != nil {
 					return nil, "", err
 				}
+			} else if volumeType == types.KataVirtualVolumeNBDType {
+				vol, err = handleNBDVirtualVolume(c, virtVolume)
+				if err != nil {
+					return nil, "", err
+				}
 			}
 
 			if vol != nil {
@@ -528,6 +533,45 @@ func handleVirtualVolume(c *Container) ([]*grpc.Storage, string, error) {
 	}
 
 	return volumes, volumeType, nil
+}
+
+// handleNBDVirtualVolume creates a storage object for NBD virtual volumes
+func handleNBDVirtualVolume(c *Container, virtVolume *types.KataVirtualVolume) (*grpc.Storage, error) {
+	if virtVolume.NBD == nil {
+		return nil, fmt.Errorf("NBD volume information is missing")
+	}
+
+	nbdVolume := virtVolume.NBD
+	guestPath := filepath.Join("/run/kata-containers/", c.id, c.rootfsSuffix)
+
+	// Create NBD URI from NBD volume info
+	nbdURI := fmt.Sprintf("nbd://%s:%d/%s", nbdVolume.Server, nbdVolume.Port, nbdVolume.ExportName)
+
+	vol := &grpc.Storage{
+		Driver:     "nbd",
+		Source:     nbdURI,
+		MountPoint: guestPath,
+		Fstype:     virtVolume.FSType,
+		Options:    virtVolume.Options,
+	}
+
+	// Add NBD-specific options if needed
+	if len(vol.Options) == 0 {
+		vol.Options = []string{}
+	}
+
+	if virtVolume.Source != "" {
+		vol.Source = virtVolume.Source // Use source if explicitly provided
+	}
+
+	logger := c.Logger()
+	logger.WithFields(logrus.Fields{
+		"nbd-server": fmt.Sprintf("%s:%d", nbdVolume.Server, nbdVolume.Port),
+		"export":     nbdVolume.ExportName,
+		"mount":      guestPath,
+	}).Info("Created NBD virtual volume storage")
+
+	return vol, nil
 }
 
 func (f *FilesystemShare) shareRootFilesystemWithVirtualVolume(ctx context.Context, c *Container) (*SharedFile, error) {

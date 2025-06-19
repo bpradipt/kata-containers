@@ -1822,6 +1822,57 @@ func (k *kataAgent) handleVhostUserBlkVolume(c *Container, m Mount, device api.D
 	return vol, nil
 }
 
+// handleNBDVolume handles volume that is an NBD device
+// and DeviceNBD type.
+func (k *kataAgent) handleNBDVolume(c *Container, m Mount, device api.Device) (*grpc.Storage, error) {
+	vol := &grpc.Storage{}
+
+	// For NBD devices, we expect the device to contain KataVirtualVolume info
+	// or NBD connection details from the remote hypervisor
+	deviceInfo := device.GetDeviceInfo()
+	
+	// Check if this is a KataVirtualVolume with NBD info
+	if kataVolume, ok := deviceInfo.(*types.KataVirtualVolume); ok && kataVolume.NBD != nil {
+		// Use the NBD information from KataVirtualVolume
+		nbdInfo := kataVolume.NBD
+		nbdURI := fmt.Sprintf("nbd://%s:%d/%s", nbdInfo.Server, nbdInfo.Port, nbdInfo.ExportName)
+		
+		vol.Driver = "nbd"
+		vol.Source = nbdURI
+		vol.MountPoint = m.Destination
+		vol.Fstype = kataVolume.FSType
+		vol.Options = kataVolume.Options
+		
+		if vol.Fstype == "" {
+			vol.Fstype = m.Type
+		}
+		if len(vol.Options) == 0 {
+			vol.Options = m.Options
+		}
+		
+		k.Logger().WithFields(logrus.Fields{
+			"nbd-server": fmt.Sprintf("%s:%d", nbdInfo.Server, nbdInfo.Port),
+			"export":     nbdInfo.ExportName,
+			"mount":      m.Destination,
+		}).Info("Created NBD volume storage object")
+		
+	} else {
+		// Fallback: treat as regular block device but use NBD driver
+		vol.Driver = "nbd"
+		vol.Source = m.Source
+		vol.MountPoint = m.Destination
+		vol.Fstype = m.Type
+		vol.Options = m.Options
+		
+		k.Logger().WithFields(logrus.Fields{
+			"source": m.Source,
+			"mount":  m.Destination,
+		}).Info("Created generic NBD volume storage object")
+	}
+
+	return vol, nil
+}
+
 func (k *kataAgent) createBlkStorageObject(c *Container, m Mount) (*grpc.Storage, error) {
 	var vol *grpc.Storage
 
@@ -1838,6 +1889,8 @@ func (k *kataAgent) createBlkStorageObject(c *Container, m Mount) (*grpc.Storage
 		vol, err = k.handleDeviceBlockVolume(c, m, device)
 	case config.VhostUserBlk:
 		vol, err = k.handleVhostUserBlkVolume(c, m, device)
+	case config.DeviceNBD:
+		vol, err = k.handleNBDVolume(c, m, device)
 	default:
 		return nil, fmt.Errorf("Unknown device type")
 	}
