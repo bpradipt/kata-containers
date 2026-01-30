@@ -11,7 +11,6 @@ require (
 	github.com/BurntSushi/toml v1.5.0
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/blang/semver/v4 v4.0.0
-	github.com/container-orchestrated-devices/container-device-interface v0.6.0
 	github.com/containerd/cgroups v1.1.0
 	github.com/containerd/console v1.0.5
 	github.com/containerd/containerd v1.7.29
@@ -111,6 +110,7 @@ require (
 	github.com/mdlayher/socket v0.5.1 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/moby/locker v1.0.1 // indirect
+	github.com/moby/sys/capability v0.4.0 // indirect
 	github.com/moby/sys/sequential v0.5.0 // indirect
 	github.com/moby/sys/signal v0.7.0 // indirect
 	github.com/moby/sys/symlink v0.2.0 // indirect
