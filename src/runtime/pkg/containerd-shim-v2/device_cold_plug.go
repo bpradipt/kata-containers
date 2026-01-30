@@ -70,6 +70,7 @@ func coldPlugWithAPI(ctx context.Context, s *service, ociSpec *specs.Spec) error
 		return nil
 	}
 
+	shimLog.Infof("CDI devices to inject: %v", devices)
 	err = config.InjectCDIDevices(ociSpec, devices)
 	if err != nil {
 		return fmt.Errorf("cold plug: CDI device injection failed: %w", err)
@@ -140,7 +141,17 @@ func getDeviceSpec(ctx context.Context, socket string, ann map[string]string) ([
 func formatCDIDevIDs(specName string, devIDs []string) []string {
 	var result []string
 	for _, id := range devIDs {
-		result = append(result, fmt.Sprintf("%s=%s", specName, id))
+		shimLog.Infof("CDI device ID from PodResources: %s=%s", specName, id)
+
+		// TEMP FIX: Strip "vfio" prefix from device IDs if present.
+		// The PodResources API returns device IDs like "vfio0", "vfio1", etc.
+		// but CDI specs define devices with index-only names like "0", "1", etc.
+		cleanID := strings.TrimPrefix(id, "vfio")
+		if cleanID != id {
+			shimLog.Infof("CDI device ID corrected: %s=%s -> %s=%s", specName, id, specName, cleanID)
+		}
+
+		result = append(result, fmt.Sprintf("%s=%s", specName, cleanID))
 	}
 	return result
 }
