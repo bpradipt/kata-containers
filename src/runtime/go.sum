@@ -31,8 +31,6 @@ github.com/cilium/ebpf v0.16.0 h1:+BiEnHL6Z7lXnlGUsXQPPAE7+kenAd4ES8MQ5min0Ok=
 github.com/cilium/ebpf v0.16.0/go.mod h1:L7u2Blt2jMM/vLAVgjxluxtBKlz3/GWjB0dMOEngfwE=
 github.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=
 github.com/cncf/udpa/go v0.0.0-20191209042840-269d4d468f6f/go.mod h1:M8M6+tZqaGXZJjfX53e64911xZQV5JYwmTeXPW+k8Sc=
-github.com/container-orchestrated-devices/container-device-interface v0.6.0 h1:aWwcz/Ep0Fd7ZuBjQGjU/jdPloM7ydhMW13h85jZNvk=
-github.com/container-orchestrated-devices/container-device-interface v0.6.0/go.mod h1:OQlgtJtDrOxSQ1BWODC8OZK1tzi9W69wek+Jy17ndzo=
 github.com/containerd/cgroups v1.1.0 h1:v8rEWFl6EoqHB+swVNjVoCJE8o3jX7e8nqBGPLaDFBM=
 github.com/containerd/cgroups v1.1.0/go.mod h1:6ppBcbh/NOOUU+dMKrykgaBnK9lCIBxHqJDGwsa1mIw=
 github.com/containerd/cgroups/v3 v3.0.5 h1:44na7Ud+VwyE7LIoJ8JTNQOa549a8543BmzaJHo6Bzo=
@@ -205,6 +203,8 @@ github.com/mitchellh/mapstructure v1.5.0 h1:jeMsZIYE/09sWLaz43PL7Gy6RuMjD2eJVyua
 github.com/mitchellh/mapstructure v1.5.0/go.mod h1:bFUtVrKA4DC2yAKiSyO/QUcy7e+RRV2QTWOzhPopBRo=
 github.com/moby/locker v1.0.1 h1:fOXqR41zeveg4fFODix+1Ch4mj/gT0NE1XJbp/epuBg=
 github.com/moby/locker v1.0.1/go.mod h1:S7SDdo5zpBK84bzzVlKr2V0hz+7x9hWbYC/kq7oQppc=
+github.com/moby/sys/capability v0.4.0 h1:4D4mI6KlNtWMCM1Z/K0i7RV1FkX+DBDHKVJpCndZoHk=
+github.com/moby/sys/capability v0.4.0/go.mod h1:4g9IK291rVkms3LKCDOoYlnV8xKwoDTpIrNEE35Wq0I=
 github.com/moby/sys/mountinfo v0.7.2 h1:1shs6aH5s4o5H2zQLn796ADW1wMrIwHsyJ2v9KouLrg=
 github.com/moby/sys/mountinfo v0.7.2/go.mod h1:1YOa8w8Ih7uW0wALDUgT1dTTSBrZ+HiBLGws92L2RU4=
 github.com/moby/sys/sequential v0.5.0 h1:OPvI35Lzn9K04PBbCLW0g4LcFAJgHsvXsRyewg5lXtc=
@@ -243,8 +243,12 @@ github.com/opencontainers/runc v1.2.8 h1:RnEICeDReapbZ5lZEgHvj7E9Q3Eex9toYmaGBsb
 github.com/opencontainers/runc v1.2.8/go.mod h1:cC0YkmZcuvr+rtBZ6T7NBoVbMGNAdLa/21vIElJDOzI=
 github.com/opencontainers/runtime-spec v1.2.1 h1:S4k4ryNgEpxW1dzyqffOmhI1BHYcjzU8lpJfSlR0xww=
 github.com/opencontainers/runtime-spec v1.2.1/go.mod h1:jwyrGlmzljRJv/Fgzds9SsS/C5hL+LL3ko9hs6T5lQ0=
+github.com/opencontainers/runtime-spec v1.3.0 h1:YZupQUdctfhpZy3TM39nN9Ika5CBWT5diQ8ibYCRkxg=
+github.com/opencontainers/runtime-spec v1.3.0/go.mod h1:jwyrGlmzljRJv/Fgzds9SsS/C5hL+LL3ko9hs6T5lQ0=
 github.com/opencontainers/runtime-tools v0.9.1-0.20250303011046-260e151b8552 h1:CkXngT0nixZqQUPDVfwVs3GiuhfTqCMk0V+OoHpxIvA=
 github.com/opencontainers/runtime-tools v0.9.1-0.20250303011046-260e151b8552/go.mod h1:T487Kf80NeF2i0OyVXHiylg217e0buz8pQsa0T791RA=
+github.com/opencontainers/runtime-tools v0.9.1-0.20251114084447-edf4cb3d2116 h1:tAKu3NkKWZYpqBSOJKwTxT1wIGueiF7gcmcNgr5pNTY=
+github.com/opencontainers/runtime-tools v0.9.1-0.20251114084447-edf4cb3d2116/go.mod h1:DKDEfzxvRkoQ6n9TGhxQgg2IM1lY4aM0eaQP4e3oElw=
 github.com/opencontainers/selinux v1.13.0 h1:Zza88GWezyT7RLql12URvoxsbLfjFx988+LGaWfbL84=
 github.com/opencontainers/selinux v1.13.0/go.mod h1:XxWTed+A/s5NNq4GmYScVy+9jzXhGBVEOAyucdRUY8s=
 github.com/opentracing/opentracing-go v1.2.0 h1:uEJPy/1a5RIPAJ0Ov+OIO8OxWu77jEv+1B0VhjKrZUs=
@@ -478,3 +482,5 @@ tags.cncf.io/container-device-interface v1.0.1 h1:KqQDr4vIlxwfYh0Ed/uJGVgX+CHAka
 tags.cncf.io/container-device-interface v1.0.1/go.mod h1:JojJIOeW3hNbcnOH2q0NrWNha/JuHoDZcmYxAZwb2i0=
 tags.cncf.io/container-device-interface/specs-go v1.0.0 h1:8gLw29hH1ZQP9K1YtAzpvkHCjjyIxHZYzBAvlQ+0vD8=
 tags.cncf.io/container-device-interface/specs-go v1.0.0/go.mod h1:u86hoFWqnh3hWz3esofRFKbI261bUlvUfLKGrDhJkgQ=
+tags.cncf.io/container-device-interface/specs-go v1.1.0 h1:QRZVeAceQM+zTZe12eyfuJuuzp524EKYwhmvLd+h+yQ=
+tags.cncf.io/container-device-interface/specs-go v1.1.0/go.mod h1:u86hoFWqnh3hWz3esofRFKbI261bUlvUfLKGrDhJkgQ=
