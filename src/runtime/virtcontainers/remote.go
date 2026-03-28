@@ -286,11 +286,14 @@ func (rh *remoteHypervisor) Check() error {
 }
 
 func (rh *remoteHypervisor) Save() persistapi.HypervisorState {
-	return persistapi.HypervisorState{}
+	return persistapi.HypervisorState{
+		AgentSocketPath: rh.agentSocketPath,
+	}
 }
 
-func (rh *remoteHypervisor) Load(persistapi.HypervisorState) {
-	notImplemented("Load")
+func (rh *remoteHypervisor) Load(s persistapi.HypervisorState) {
+	rh.agentSocketPath = s.AgentSocketPath
+	hvLogger.Infof("remoteHypervisor: restored agentSocketPath from state (set=%v)", s.AgentSocketPath != "")
 }
 
 func (rh *remoteHypervisor) IsRateLimiterBuiltin() bool {
