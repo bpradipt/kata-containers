@@ -1,0 +1,29 @@
+#
+# Copyright (c) 2026 Kata Containers contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+[Unit]
+Description=Set up embedded image cache from extension %i
+DefaultDependencies=no
+After=local-fs-pre.target
+After=kata-extension-mount@%i.service
+Before=kata-agent.service
+ConditionKernelCommandLine=kata.extension.%i.verity_params
+# No OnFailure=poweroff.target here: the cache is not an integrity boundary.
+# Its contents are dm-verity verified by kata-extension-mount@%i.service (which
+# does fail closed), and the setup script refuses an unverified cache
+# extension. If this unit fails, no meta store is installed and CDH falls back
+# to a normal registry pull, which either succeeds or fails with its own clear
+# error.
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+StandardOutput=journal+console
+StandardError=journal+console
+ExecStart=/usr/libexec/kata-image-cache-setup.sh %i
+
+[Install]
+WantedBy=kata-containers.target
