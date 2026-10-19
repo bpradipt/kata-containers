@@ -104,10 +104,13 @@ ifeq ($(INIT),no)
     UNIT_FILES += kata-containers.target
     # Template unit for mounting extension block devices (CoCo, GPU, etc.)
     UNIT_FILES += kata-extension-mount@.service
-    # Helper scripts for extension mount/umount
-    EXTENSION_SCRIPTS = kata-extension-mount.sh kata-extension-umount.sh
-    # systemd generator that enables the mount template per extension declared
-    # on the kernel command line, so new extensions need no rootfs build change
+    # Template unit for setting up the embedded image cache from an extension
+    UNIT_FILES += kata-image-cache-setup@.service
+    # Helper scripts for extension mount/umount and image cache setup
+    EXTENSION_SCRIPTS = kata-extension-mount.sh kata-extension-umount.sh kata-image-cache-setup.sh
+    # systemd generator that enables the mount/cache-setup templates per
+    # extension declared on the kernel command line, so new extensions need no
+    # rootfs build change
     EXTENSION_GENERATOR = kata-extension-mount-generator.sh
 endif
 

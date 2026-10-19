@@ -5,7 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # systemd system generator that instantiates the kata-extension-mount@.service
-# template for every guest extension image declared on the kernel command line.
+# template (and the kata-image-cache-setup@.service template) for every guest
+# extension image declared on the kernel command line.
 #
 # The runtime emits one "kata.extension.<name>.verity_params=..." entry per
 # configured guest_extension_images, so this generator enables exactly the
@@ -13,13 +14,20 @@
 # know any extension name in advance. Adding a new extension therefore requires
 # no change to the image build: it is wired up purely from the kernel cmdline.
 #
+# For each extension the generator wires two units:
+#   * kata-extension-mount@<name>.service mounts the extension read-only.
+#   * kata-image-cache-setup@<name>.service binds the extension's embedded image
+#     cache (if any) into CDH's work directory. It no-ops for extensions that
+#     carry no meta_store.json.
+#
 # systemd invokes generators with three directory arguments; $1 is the "normal"
 # output directory, which is where dependency symlinks belong.
 
 set -u
 
 normal_dir="${1:-/tmp}"
-unit="/usr/lib/systemd/system/kata-extension-mount@.service"
+mount_unit="/usr/lib/systemd/system/kata-extension-mount@.service"
+cache_setup_unit="/usr/lib/systemd/system/kata-image-cache-setup@.service"
 target="kata-containers.target"
 wants_dir="${normal_dir}/${target}.wants"
 
@@ -53,7 +61,8 @@ for param in ${cmdline}; do
 	[[ "${name}" =~ ^[a-zA-Z0-9_-]+$ ]] || continue
 
 	mkdir -p "${wants_dir}"
-	ln -sf "${unit}" "${wants_dir}/kata-extension-mount@${name}.service"
+	ln -sf "${mount_unit}" "${wants_dir}/kata-extension-mount@${name}.service"
+	ln -sf "${cache_setup_unit}" "${wants_dir}/kata-image-cache-setup@${name}.service"
 done
 
 exit 0
