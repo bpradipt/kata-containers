@@ -638,6 +638,66 @@ The resulting image is a two-partition disk:
 The root hash and verity parameters are captured at build time and injected
 into the runtime configuration templates.
 
+#### Embedded image cache extension
+
+An image cache extension carries pre-pulled container images, so CDH can
+create containers from them without contacting the registry. Its root holds
+the image-rs layer store (`layers/0..N`) and a `meta_store.json` whose
+`reference_db` maps image references to cached images.
+
+Build it with `tools/osbuilder/image-builder/build_image_cache_extension.sh`:
+
+```bash
+sudo CDH_ONESHOT=/path/to/cdh-oneshot \
+  tools/osbuilder/image-builder/build_image_cache_extension.sh \
+  -o /opt/kata/share/kata-containers/kata-containers-imgcache.img \
+  docker.io/library/nginx:latest
+```
+
+The script pre-pulls each image with `cdh-oneshot` into
+`/run/kata-containers/image` (inside a private mount namespace), so the layer
+paths recorded in `meta_store.json` match the CDH work directory in the guest.
+It then packs the result with `image_builder.sh` as an EROFS + dm-verity
+extension and writes `root_hash_imgcache-extension.txt`. Add the image to
+`guest_extension_images` with those verity parameters. The extension name must
+fit the hypervisor's block device serial limit.
+
+In the guest, the generator enables `kata-image-cache-setup@<name>.service`
+for every extension. The unit does nothing for extensions without a
+`meta_store.json`. For an image cache extension it bind-mounts each layer
+read-only into CDH's writable layer store, then installs `meta_store.json` and
+bind-mounts it onto itself, because the agent removes `/run/kata-containers`
+on `CreateSandbox`. The unit:
+
+- refuses an image cache extension that is not dm-verity verified;
+- accepts only one image cache extension per VM;
+- installs `meta_store.json` last, so on any failure CDH sees no cache and
+  pulls from the registry.
+
+CDH serves the cache only when the pod enables it in the initdata `cdh.toml`:
+
+```toml
+[image]
+enable_embedded_image_cache = true
+```
+
+This needs a guest-components revision that supports
+`enable_embedded_image_cache`, in both the CoCo extension (the CDH that runs)
+and the `cdh-oneshot` used for the build.
+
+Security notes:
+
+- When an image security policy is configured, cached images are checked
+  against it. The check covers the manifest digest recorded in
+  `meta_store.json`; image-rs does not re-hash the layers, so the integrity of
+  the cache comes from dm-verity on the extension and the measured verity
+  parameters.
+- dm-verity protects integrity only. The layers are stored decrypted in the
+  extension image; do not embed images that contain secrets. Images with
+  encrypted layers are never recorded in the cache.
+- A cached tag is served for the life of the VM and is not re-resolved against
+  the registry.
+
 ### Security model
 
 The extension architecture preserves the existing security guarantees of
